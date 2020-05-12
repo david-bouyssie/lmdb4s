@@ -1,6 +1,5 @@
 package com.github.lmdb4s
 
-import bindings._
 import Env.SHOULD_CHECK
 
 object Cursor {
@@ -29,7 +28,7 @@ object Cursor {
 final class Cursor[T >: Null, P >: Null] private[lmdb4s](
   private val ptrCursor: P,
   private var txn: Txn[T,P]
-)(private implicit val keyValFactory: IKeyValFactory[T, P]) extends AutoCloseable {
+)(private implicit val keyValFactory: IKeyValFactory[T, P]) extends ICursor[T] with AutoCloseable {
   require(ptrCursor != null, "ptrCursor is null")
   require(txn != null, "txn is null")
   require(keyValFactory != null, "keyValFactory is null")
@@ -235,17 +234,21 @@ final class Cursor[T >: Null, P >: Null] private[lmdb4s](
    *
    * @param newTxn transaction handle
    */
-  def renew(newTxn: Txn[T,P]): Unit = {
+  def renew(newTxn: ITxn[T]): Unit = {
+    require(newTxn != null, "newTxn is null")
+
+    val typedNewTxn = newTxn.asInstanceOf[Txn[T,P]]
+
     if (SHOULD_CHECK) {
-      require(newTxn != null, "newTxn is null")
       checkNotClosed()
       this.txn.checkReadOnly() // existing
 
-      newTxn.checkReadOnly()
-      newTxn.checkReady()
+      typedNewTxn.checkReadOnly()
+      typedNewTxn.checkReady()
     }
-    LIB.mdb_cursor_renew(newTxn.pointer, ptrCursor)
-    this.txn = newTxn
+
+    LIB.mdb_cursor_renew(typedNewTxn.pointer, ptrCursor)
+    this.txn = typedNewTxn
   }
 
   /**

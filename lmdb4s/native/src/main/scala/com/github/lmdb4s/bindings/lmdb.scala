@@ -11,8 +11,8 @@ object lmdb { // TODO: rename Library (to be similar to JNR)
 
   /* --- Some C types --- */
   type KVType = CStruct2[Long,Ptr[Byte]]
-  sealed trait IKeyValPointer
-  type KVPtr = Ptr[KVType] with IKeyValPointer
+  //sealed trait IKeyValPointer
+  type KVPtr = Ptr[KVType] //with IKeyValPointer
 
   type struct_lmdb_env_info = CStruct6[Ptr[Byte],CSize,CSize,CSize,UInt,UInt]
   type struct_lmdb_stat = CStruct6[UInt,UInt,CSize,CSize,CSize,CSize]

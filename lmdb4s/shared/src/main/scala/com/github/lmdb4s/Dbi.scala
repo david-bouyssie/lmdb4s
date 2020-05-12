@@ -91,7 +91,7 @@ final class Dbi[T >: Null, P >: Null] private(
   private val env: Env[T,P],
   private val name: Array[Byte],
   private val dbiPtr: P
-)(private implicit val keyValFactory: IKeyValFactory[T, P]) {
+)(private implicit val keyValFactory: IKeyValFactory[T, P]) extends IDbi[T] {
 
   require(keyValFactory != null, "keyValFactory is null")
 
@@ -156,7 +156,7 @@ final class Dbi[T >: Null, P >: Null] private(
    * @see #delete(org.lmdbjava.Txn, java.lang.Object, java.lang.Object)
    */
   def delete(key: T): Boolean = {
-    var txn: Txn[T,P] = null
+    var txn: ITxn[T] = null
     try {
       txn = env.txnWrite()
       val ret = delete(txn, key)
@@ -175,7 +175,7 @@ final class Dbi[T >: Null, P >: Null] private(
    * @return true if the key/data pair was found, false otherwise
    * @see #delete(org.lmdbjava.Txn, java.lang.Object, java.lang.Object)
    */
-  def delete(txn: Txn[T,P], key: T): Boolean = delete(txn, key, null)
+  def delete(txn: ITxn[T], key: T): Boolean = delete(txn, key, null)
 
   /**
    * Removes key/data pairs from the database.
@@ -192,22 +192,25 @@ final class Dbi[T >: Null, P >: Null] private(
    * @param val value to delete from the database (null permitted)
    * @return true if the key/data pair was found, false otherwise
    */
-  def delete(txn: Txn[T,P], key: T, `val`: T): Boolean = {
+  def delete(txn: ITxn[T], key: T, `val`: T): Boolean = {
+    require(txn != null, "txn is null")
+    require(key != null, "key is null")
+
+    val typedTxn = txn.asInstanceOf[Txn[T,P]]
+
     if (SHOULD_CHECK) {
-      require(txn != null, "txn is null")
-      require(key != null, "key is null")
-      txn.checkReady()
-      txn.checkWritesAllowed()
+      typedTxn.checkReady()
+      typedTxn.checkWritesAllowed()
     }
-    txn.kv.keyIn(key)
+    typedTxn.kv.keyIn(key)
 
     val data = if (`val` == null) null
     else {
-      txn.kv.valIn(`val`)
-      txn.kv.pointerVal
+      typedTxn.kv.valIn(`val`)
+      typedTxn.kv.pointerVal
     }
 
-    LIB.mdb_del(txn.pointer, dbiPtr, txn.kv.pointerKey, data)
+    LIB.mdb_del(typedTxn.pointer, dbiPtr, typedTxn.kv.pointerKey, data)
   }
 
   /**
@@ -220,7 +223,7 @@ final class Dbi[T >: Null, P >: Null] private(
    *
    * @param txn transaction handle (not null; not committed; must be R-W)
    */
-  def drop(txn: Txn[T,P]): Unit = {
+  def drop(txn: ITxn[T]): Unit = {
     drop(txn, delete = false)
   }
 
@@ -232,16 +235,20 @@ final class Dbi[T >: Null, P >: Null] private(
    * @param txn    transaction handle (not null; not committed; must be R-W)
    * @param delete whether database should be deleted.
    */
-  def drop(txn: Txn[T,P], delete: Boolean): Unit = {
+  def drop(txn: ITxn[T], delete: Boolean): Unit = {
+    require(txn != null, "txn is null")
+
+    val typedTxn = txn.asInstanceOf[Txn[T,P]]
+
     if (SHOULD_CHECK) {
-      require(txn != null, "txn is null")
-      txn.checkReady()
-      txn.checkWritesAllowed()
+      typedTxn.checkReady()
+      typedTxn.checkWritesAllowed()
     }
+
     if (delete) clean()
     val del = if (delete) 1 else 0
 
-    LIB.mdb_drop(txn.pointer, dbiPtr, del)
+    LIB.mdb_drop(typedTxn.pointer, dbiPtr, del)
   }
 
   /**
@@ -259,17 +266,20 @@ final class Dbi[T >: Null, P >: Null] private(
    * @param key key to search for in the database (not null)
    * @return the data or null if not found
    */
-  def get(txn: Txn[T,P], key: T): T = {
+  def get(txn: ITxn[T], key: T): T = {
+    require(txn != null, "txn is null")
+    require(key != null, "key is null")
+
+    val typedTxn = txn.asInstanceOf[Txn[T,P]]
     if (SHOULD_CHECK) {
-      require(txn != null, "txn is null")
-      require(key != null, "key is null")
-      txn.checkReady()
+      typedTxn.checkReady()
     }
-    txn.kv.keyIn(key)
 
-    val found = LIB.mdb_get(txn.pointer, dbiPtr, txn.kv.pointerKey, txn.kv.pointerVal)
+    typedTxn.kv.keyIn(key)
 
-    if (!found) null else txn.kv.valOut // marked as out in LMDB C docs
+    val found = LIB.mdb_get(typedTxn.pointer, dbiPtr, typedTxn.kv.pointerKey, typedTxn.kv.pointerVal)
+
+    if (!found) null else typedTxn.kv.valOut // marked as out in LMDB C docs
   }
 
   /**
@@ -285,7 +295,7 @@ final class Dbi[T >: Null, P >: Null] private(
    * @param txn transaction handle (not null; not committed)
    * @return iterator
    */
-  def iterate(txn: Txn[T,P]): CursorIterator[T,P] = iterate(txn, KeyRange.all)
+  def iterate(txn: ITxn[T]): ICursorIterator[T] = iterate(txn, KeyRange.all)
 
   /*
 
@@ -332,7 +342,7 @@ final class Dbi[T >: Null, P >: Null] private(
    * @param range range of acceptable keys (not null)
    * @return iterator (never null)
    */
-  def iterate(txn: Txn[T,P], range: KeyRange[T]): CursorIterator[T,P] = iterate(txn, range, null)
+  def iterate(txn: ITxn[T], range: KeyRange[T]): ICursorIterator[T] = iterate(txn, range, null)
 
   /**
    * Iterate the database in accordance with the provided KeyRange and Comparator.
@@ -352,15 +362,18 @@ final class Dbi[T >: Null, P >: Null] private(
    * @param comparator custom comparator for keys (may be null)
    * @return iterator (never null)
    */
-  def iterate(txn: Txn[T,P], range: KeyRange[T], comparator: Comparator[T]): CursorIterator[T,P] = {
-    if (SHOULD_CHECK) {
-      require(txn != null, "txn is null")
-      require(range != null, "range is null")
-      txn.checkReady()
-    }
-    val useComp = if (comparator != null) comparator else compFunc.getOrElse(txn.comparator)
+  def iterate(txn: ITxn[T], range: KeyRange[T], comparator: Comparator[T]): ICursorIterator[T] = {
+    require(txn != null, "txn is null")
+    require(range != null, "range is null")
 
-    new CursorIterator[T,P](txn, this, range, useComp)
+    val typedTxn = txn.asInstanceOf[Txn[T,P]]
+    if (SHOULD_CHECK) {
+      typedTxn.checkReady()
+    }
+
+    val useComp = if (comparator != null) comparator else compFunc.getOrElse(typedTxn.comparator)
+
+    new CursorIterator[T,P](typedTxn, this, range, useComp)
   }
 
   /**
@@ -379,13 +392,17 @@ final class Dbi[T >: Null, P >: Null] private(
    * @param txn transaction handle (not null; not committed)
    * @return cursor handle
    */
-  def openCursor(txn: Txn[T,P]): Cursor[T,P] = {
+  def openCursor(txn: ITxn[T]): ICursor[T] = {
+    require(txn != null, "txn is null")
+
+    val typedTxn = txn.asInstanceOf[Txn[T,P]]
+
     if (SHOULD_CHECK) {
-      require(txn != null, "txn is null")
-      txn.checkReady()
+      typedTxn.checkReady()
     }
-    val cursorPtr = LIB.mdb_cursor_open(txn.pointer, dbiPtr)
-    new Cursor[T,P](cursorPtr, txn)
+
+    val cursorPtr = LIB.mdb_cursor_open(typedTxn.pointer, dbiPtr)
+    new Cursor[T,P](cursorPtr, typedTxn)
   }
 
   /**
@@ -398,7 +415,7 @@ final class Dbi[T >: Null, P >: Null] private(
    */
   def put(key: T, `val`: T): Unit = {
 
-    var txn: Txn[T,P] = null
+    var txn: ITxn[T] = null
     try {
       txn = env.txnWrite()
       put(txn, key, `val`)
@@ -424,24 +441,27 @@ final class Dbi[T >: Null, P >: Null] private(
    * @return true if the value was put, false if MDB_NOOVERWRITE or
    *         MDB_NODUPDATA were set and the key/value existed already.
    */
-  def put(txn: Txn[T,P], key: T, `val`: T, flags: PutFlags.Flag*): Boolean = {
+  def put(txn: ITxn[T], key: T, `val`: T, flags: PutFlags.Flag*): Boolean = {
+    require(txn != null, "txn is null")
+    require(key != null, "key is null")
+    require(`val` != null, "val is null")
+
+    val typedTxn = txn.asInstanceOf[Txn[T,P]]
+
     if (SHOULD_CHECK) {
-      require(txn != null, "txn is null")
-      require(key != null, "key is null")
-      require(`val` != null, "val is null")
-      txn.checkReady()
-      txn.checkWritesAllowed()
+      typedTxn.checkReady()
+      typedTxn.checkWritesAllowed()
     }
-    txn.kv.keyIn(key)
-    txn.kv.valIn(`val`)
+    typedTxn.kv.keyIn(key)
+    typedTxn.kv.valIn(`val`)
 
     val mask = MaskedFlag.mask(flags: _*)
 
     var isPut = false
     try {
-      isPut = LIB.mdb_put(txn.pointer, dbiPtr, txn.kv.pointerKey, txn.kv.pointerVal, mask)
+      isPut = LIB.mdb_put(typedTxn.pointer, dbiPtr, typedTxn.kv.pointerKey, typedTxn.kv.pointerVal, mask)
     } finally {
-      if (!isPut && MaskedFlag.isSet(mask, PutFlags.MDB_NOOVERWRITE)) txn.kv.valOut // marked as in,out in LMDB C docs
+      if (!isPut && MaskedFlag.isSet(mask, PutFlags.MDB_NOOVERWRITE)) typedTxn.kv.valOut // marked as in,out in LMDB C docs
     }
 
     isPut
@@ -464,23 +484,27 @@ final class Dbi[T >: Null, P >: Null] private(
    * @param op   options for this operation
    * @return a buffer that can be used to modify the value
    */
-  def reserve(txn: Txn[T,P], key: T, size: Int, op: PutFlags.Flag*): T = {
+  def reserve(txn: ITxn[T], key: T, size: Int, op: PutFlags.Flag*): T = {
+    require(txn != null, "txn is null")
+    require(key != null, "key is null")
+
+    val typedTxn = txn.asInstanceOf[Txn[T,P]]
+
     if (SHOULD_CHECK) {
-      require(txn != null, "txn is null")
-      require(key != null, "key is null")
-      txn.checkReady()
-      txn.checkWritesAllowed()
+      typedTxn.checkReady()
+      typedTxn.checkWritesAllowed()
     }
-    txn.kv.keyIn(key)
-    txn.kv.valIn(size)
+
+    typedTxn.kv.keyIn(key)
+    typedTxn.kv.valIn(size)
 
     val flags = MaskedFlag.mask(op: _*) | PutFlags.MDB_RESERVE.getMask()
 
-    LIB.mdb_put(txn.pointer, dbiPtr, txn.kv.pointerKey, txn.kv.pointerVal, flags)
+    LIB.mdb_put(typedTxn.pointer, dbiPtr, typedTxn.kv.pointerKey, typedTxn.kv.pointerVal, flags)
 
-    txn.kv.valOut
+    typedTxn.kv.valOut
 
-    txn.value
+    typedTxn.value
   }
 
   /**
@@ -489,12 +513,16 @@ final class Dbi[T >: Null, P >: Null] private(
    * @param txn transaction handle (not null; not committed)
    * @return an immutable statistics object.
    */
-  def stat(txn: Txn[T,P]): Stat = {
+  def stat(txn: ITxn[T]): Stat = {
+    require(txn != null, "txn is null")
+
+    val typedTxn = txn.asInstanceOf[Txn[T,P]]
+
     if (SHOULD_CHECK) {
-      require(txn != null, "txn is null")
-      txn.checkReady()
+      typedTxn.checkReady()
     }
-    LIB.mdb_stat(txn.pointer, dbiPtr)
+
+    LIB.mdb_stat(typedTxn.pointer, dbiPtr)
   }
 
   private def clean(): Unit = {

@@ -47,7 +47,7 @@ object ByteBufferProxyTest extends TestSuite {
   def buffersMustBeDirect(): Unit = {
     val tmpDir = createTempDirectory(className(this.getClass))
 
-    var env: Env[ByteBuffer,JnrPointer] = null
+    var env: IEnv[ByteBuffer] = null
     try {
       val envBuilder = createEnv(ByteBufferKeyValFactory)
       env = envBuilder.setMaxReaders(1).open(tmpDir)

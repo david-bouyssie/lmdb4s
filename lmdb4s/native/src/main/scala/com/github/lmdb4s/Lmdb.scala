@@ -33,7 +33,7 @@ object Lmdb {
    * @param flags the flags for this new environment
    * @return env the environment (never null)
    */
-  def openEnv(path: File, size: Int, flags: EnvFlags.Flag*): Env[Array[Byte], Ptr[Byte]] = {
+  def openEnv(path: File, size: Int, flags: EnvFlags.Flag*): IEnv[Array[Byte]] = {
     createEnv().setMapSize(size * 1024L * 1024L).open(path, flags: _*)
   }
 

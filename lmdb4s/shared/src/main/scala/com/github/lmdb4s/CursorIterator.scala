@@ -90,7 +90,7 @@ final class CursorIterator[T >: Null,P >: Null] private[lmdb4s](
   private val dbi: Dbi[T,P],
   private val range: KeyRange[T],
   private val comparator: Comparator[T]
-) extends java.util.Iterator[CursorIterator.KeyVal[T]] with AutoCloseable {
+) extends ICursorIterator[T] with java.util.Iterator[CursorIterator.KeyVal[T]] with AutoCloseable {
 
   import CursorIterator.State._
 

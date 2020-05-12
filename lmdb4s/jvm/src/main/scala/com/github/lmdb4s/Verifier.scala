@@ -80,17 +80,17 @@ object Verifier {
  *
  * @param env target that complies with the above requirements (required)
  */
-final class Verifier(private val env: Env[ByteBuffer,JnrPointer]) extends Callable[Long] {
+final class Verifier(private val env: IEnv[ByteBuffer]) extends Callable[Long] {
   require(env != null, "env is null")
 
   final private val ba = new Array[Byte](Verifier.BUFFER_LEN)
   final private val crc = new CRC32
-  final private val dbis = new ArrayList[Dbi[ByteBuffer,JnrPointer]](Verifier.DBI_COUNT)
+  final private val dbis = new ArrayList[IDbi[ByteBuffer]](Verifier.DBI_COUNT)
   private var id = 0L
   final private val key = ByteBuffer.allocateDirect(Verifier.KEY_LENGTH)
   final private val proceed = new AtomicBoolean(true)
   final private val rnd = new Random
-  private var txn: Txn[ByteBuffer,JnrPointer] = _
+  private var txn: ITxn[ByteBuffer] = _
   final private val `val` = ByteBuffer.allocateDirect(Verifier.BUFFER_LEN)
 
   key.order(BIG_ENDIAN)
@@ -167,7 +167,7 @@ final class Verifier(private val env: Env[ByteBuffer,JnrPointer]) extends Callab
     //import scala.collection.JavaConversions._
     for (existingDbiName <- env.getDbiNames()) {
       val existingDbi = env.openDbi(existingDbiName)
-      var txn: Txn[ByteBuffer,JnrPointer] = null
+      var txn: ITxn[ByteBuffer] = null
       try {
         txn = env.txnWrite()
         existingDbi.drop(txn, true)
@@ -208,7 +208,7 @@ final class Verifier(private val env: Env[ByteBuffer,JnrPointer]) extends Callab
         txn.close()
       }
       rnd.nextBytes(ba)
-      txn = env.txnWrite
+      txn = env.txnWrite()
     }
   }
 

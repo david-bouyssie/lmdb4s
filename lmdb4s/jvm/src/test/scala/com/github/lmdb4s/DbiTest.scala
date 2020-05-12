@@ -45,7 +45,7 @@ object DbiTest extends TestSuite with AbstractDbiTest[ByteBuffer,jnr.ffi.Pointer
 
   override def utestBeforeEach(path: Seq[String]): Unit = {
     val path = createTempLmdbFile(thisClassName, deleteLockFileOnExit = true)
-    env = createEnv().setMapSize(MEBIBYTES.toBytes(64)).setMaxReaders(2).setMaxDbs(2).open(path, MDB_NOSUBDIR)
+    env = createEnv().setMapSize(MEBIBYTES.toBytes(64)).setMaxReaders(2).setMaxDbs(2).open(path, MDB_NOSUBDIR).asInstanceOf[Env[ByteBuffer, jnr.ffi.Pointer]]
   }
 
   val tests = Tests {

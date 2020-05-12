@@ -66,7 +66,7 @@ object Env {
      * @return an environment ready for use
      */
     //@SuppressWarnings(Array("PMD.AccessorClassGeneration"))
-    def open(path: File, mode: Int, flags: EnvFlags.Flag*): Env[T,P] = {
+    def open(path: File, mode: Int, flags: EnvFlags.Flag*): IEnv[T] = {
       require(path != null, "path is null")
 
       if (opened) throw new Env.AlreadyOpenException()
@@ -100,7 +100,7 @@ object Env {
      * @param flags the flags for this new environment
      * @return an environment ready for use
      */
-    def open(path: File, mode: String, flags: EnvFlags.Flag*): Env[T,P] = open(path, Integer.parseInt(mode, 8), flags: _*)
+    def open(path: File, mode: String, flags: EnvFlags.Flag*): IEnv[T] = open(path, Integer.parseInt(mode, 8), flags: _*)
 
     /**
      * Opens the environment with 0664 mode.
@@ -110,7 +110,7 @@ object Env {
      * @return an environment ready for use
      */
     //@SuppressWarnings(Array("PMD.AvoidUsingOctalValues"))
-    def open(path: File, flags: EnvFlags.Flag*): Env[T,P] = open(path, "0664", flags: _*)
+    def open(path: File, flags: EnvFlags.Flag*): IEnv[T] = open(path, "0664", flags: _*)
 
     /**
      * Sets the map size.
@@ -191,7 +191,7 @@ final class Env[T >: Null, P >: Null] private(
   //private val proxy: BufferProxy[T, Env.LIB.AnyPointer],
   private val envPtr: P,
   private val readOnly: Boolean
-)(private implicit val keyValFactory: IKeyValFactory[T, P]) extends AutoCloseable { // cache max key size to avoid further JNI calls
+)(private implicit val keyValFactory: IKeyValFactory[T, P]) extends IEnv[T] with AutoCloseable { // cache max key size to avoid further JNI calls
 
   require(keyValFactory != null, "keyValFactory is null")
 
@@ -251,8 +251,8 @@ final class Env[T >: Null, P >: Null] private(
 
     val anonymousDbi = openDbi(null: Array[Byte])
 
-    var txn: Txn[T,P] = null
-    var cursor: Cursor[T,P] = null
+    var txn: ITxn[T] = null
+    var cursor: ICursor[T] = null
     try {
       txn = txnRead()
       cursor = anonymousDbi.openCursor(txn)
@@ -329,7 +329,7 @@ final class Env[T >: Null, P >: Null] private(
    * @param flags to open the database with
    * @return a database that is ready to use
    */
-  def openDbi(name: String, flags: DbiFlags.Flag*): Dbi[T,P] = {
+  def openDbi(name: String, flags: DbiFlags.Flag*): IDbi[T] = {
     val nameBytes = if (name == null) null else name.getBytes(UTF_8)
     openDbi(nameBytes, flags: _*)
   }
@@ -343,7 +343,7 @@ final class Env[T >: Null, P >: Null] private(
    * @param flags      to open the database with
    * @return a database that is ready to use
    */
-  def openDbi(name: String, comparator: Comparator[T], flags: DbiFlags.Flag*): Dbi[T,P] = {
+  def openDbi(name: String, comparator: Comparator[T], flags: DbiFlags.Flag*): IDbi[T] = {
     val nameBytes = if (name == null) null else name.getBytes(UTF_8)
     openDbi(nameBytes, comparator, flags: _*)
   }
@@ -355,12 +355,12 @@ final class Env[T >: Null, P >: Null] private(
    * @param flags to open the database with
    * @return a database that is ready to use
    */
-  def openDbi(name: Array[Byte], flags: DbiFlags.Flag*): Dbi[T,P] = {
-    var txn: Txn[T,P] = null
+  def openDbi(name: Array[Byte], flags: DbiFlags.Flag*): IDbi[T] = {
+    var txn: ITxn[T] = null
 
     try {
       txn = if (readOnly) txnRead() else txnWrite()
-      val dbi = new Dbi[T,P](this, txn, name, flags)
+      val dbi = new Dbi[T,P](this, txn.asInstanceOf[Txn[T,P]], name, flags)
       txn.commit() // even RO Txns require a commit to retain Dbi in Env
       dbi
     } finally {
@@ -386,12 +386,12 @@ final class Env[T >: Null, P >: Null] private(
    * @param flags      to open the database with
    * @return a database that is ready to use
    */
-  def openDbi(name: Array[Byte], comparator: Comparator[T], flags: DbiFlags.Flag*): Dbi[T,P] = {
-    var txn: Txn[T,P] = null
+  def openDbi(name: Array[Byte], comparator: Comparator[T], flags: DbiFlags.Flag*): IDbi[T] = {
+    var txn: ITxn[T] = null
 
     try {
       txn = if (readOnly) txnRead() else txnWrite()
-      val dbi = new Dbi[T,P](this: Env[T,P], txn, name, comparator, flags)
+      val dbi = new Dbi[T,P](this: Env[T,P], txn.asInstanceOf[Txn[T,P]], name, comparator, flags)
       txn.commit()
       dbi
     } finally {
@@ -430,10 +430,10 @@ final class Env[T >: Null, P >: Null] private(
    * @param flags  applicable flags (eg for a reusable, read-only transaction)
    * @return a transaction (never null)
    */
-  def txn(parent: Txn[T,P], flags: TxnFlags.Flag*): Txn[T,P] = {
+  def txn(parent: ITxn[T], flags: TxnFlags.Flag*): ITxn[T] = {
     if (closed) throw new Env.AlreadyClosedException()
 
-    new Txn[T,P](this, parent, flags: _*)
+    new Txn[T,P](this, parent.asInstanceOf[Txn[T,P]], flags: _*)
   }
 
   /**
@@ -441,14 +441,14 @@ final class Env[T >: Null, P >: Null] private(
    *
    * @return a read-only transaction
    */
-  def txnRead(): Txn[T,P] = txn(null, TxnFlags.MDB_RDONLY_TXN)
+  def txnRead(): ITxn[T] = txn(null, TxnFlags.MDB_RDONLY_TXN)
 
   /**
    * Obtain a read-write transaction.
    *
    * @return a read-write transaction
    */
-  def txnWrite(): Txn[T,P] = txn(null)
+  def txnWrite(): ITxn[T] = txn(null)
 
   //private[lmdb4s]
   def pointer: P = envPtr

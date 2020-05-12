@@ -4,7 +4,7 @@ import scala.sys.process._
 val sharedSettings = Seq(
   name := "lmdb4s",
   organization := "com.github.david-bouyssie",
-  version := "0.1.0-SNAPSHOT",
+  version := "0.2.0-SNAPSHOT",
   scalaVersion := "2.11.12",
   testFrameworks += new TestFramework("utest.runner.Framework")
 )

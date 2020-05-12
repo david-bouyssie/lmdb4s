@@ -86,7 +86,7 @@ final class Txn[T >: Null, P >: Null] private[lmdb4s](
   private val parent: Txn[T,P],
   //private val proxy: BufferProxy[T, Env.LIB.AnyPointer],
   private val flags: TxnFlags.Flag*
-)(private[lmdb4s] implicit val keyValFactory: IKeyValFactory[T, P]) extends AutoCloseable {
+)(private[lmdb4s] implicit val keyValFactory: IKeyValFactory[T, P]) extends ITxn[T] with AutoCloseable {
 
   require(keyValFactory != null, "keyValFactory is null")
 
@@ -156,7 +156,7 @@ final class Txn[T >: Null, P >: Null] private[lmdb4s](
    *
    * @return the parent transaction (may be null)
    */
-  def getParent: Txn[T,P] = parent
+  def getParent: ITxn[T] = parent
 
   /**
    * Whether this transaction is read-only.
